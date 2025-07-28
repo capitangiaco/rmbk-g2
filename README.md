@@ -42,7 +42,7 @@ python vpn_manager.py openvpn init-pki
 ```bash
 python vpn_manager.py openvpn create <nome_utente>
 ```
-Il file `.ovpn` verrà salvato nella directory `client_configs/openvpn/`.
+Il file `.ovpn` per il client verrà salvato nella directory `client_configs/openvpn/`.
 
 #### Revocare un utente OpenVPN
 ```bash
@@ -69,3 +69,29 @@ Attualmente, la revoca di utenti WireGuard richiede la rimozione manuale del pee
 ```bash
 python vpn_manager.py wireguard list
 ```
+
+## Monitoraggio delle Connessioni
+
+### OpenVPN
+
+Per visualizzare le connessioni attive di OpenVPN, puoi accedere alla shell del container e leggere il file di stato:
+
+1.  **Accedi alla shell del container OpenVPN:**
+    ```bash
+    docker exec -it openvpn bash
+    ```
+2.  **Visualizza lo stato:**
+    All'interno del container, il file di stato si trova solitamente in `/etc/openvpn/openvpn-status.log`.
+    ```bash
+    cat /etc/openvpn/openvpn-status.log
+    ```
+    (Esci dalla shell del container con `exit`)
+
+### WireGuard
+
+Per visualizzare lo stato delle connessioni attive di WireGuard, usa il comando `list` dello script:
+
+```bash
+python3 vpn_manager.py wireguard list
+```
+Questo comando esegue `wg show wg0` all'interno del container WireGuard e ti mostrerà i peer connessi e il loro ultimo handshake.
