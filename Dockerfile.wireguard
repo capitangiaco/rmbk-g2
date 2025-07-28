@@ -1,0 +1,2 @@
+# Dockerfile for WireGuard (placeholder)
+# Using linuxserver/wireguard image in docker-compose.yml

@@ -1,0 +1,2 @@
+# Dockerfile for OpenVPN (placeholder)
+# Using kylemanna/openvpn image in docker-compose.yml

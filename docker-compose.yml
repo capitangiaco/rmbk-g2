@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  openvpn:
+    image: kylemanna/openvpn
+    container_name: openvpn
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "1194:1194/udp"
+    volumes:
+      - ./openvpn-data:/etc/openvpn
+    restart: unless-stopped
+
+  wireguard:
+    image: linuxserver/wireguard
+    container_name: wireguard
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Rome
+      - SERVERURL=192.168.2.11 # Sostituisci con l'IP o il dominio del tuo server
+      - SERVERPORT=51820
+      - PEERS=1 # Numero di peer iniziali, lo gestiremo con lo script
+      - PEERDNS=auto
+      - INTERNAL_SUBNET=10.13.13.0/24
+    volumes:
+      - ./wireguard-data:/config
+      - /lib/modules:/lib/modules:ro # Necessario per WireGuard
+    ports:
+      - "51820:51820/udp"
+    sysctls:
+      - net.ipv4.conf.all.src_valid_lables=1
+      - net.ipv4.ip_forward=1
+    restart: unless-stopped
