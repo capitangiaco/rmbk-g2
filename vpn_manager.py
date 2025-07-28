@@ -2,54 +2,150 @@ import docker
 import argparse
 import os
 import subprocess
+import time
 
 # Inizializza il client Docker
 client = docker.from_env()
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
-def run_docker_compose_command(command_args, description):
-    cmd = ["docker-compose"] + command_args
-    print(f"Esecuzione comando: {' '.join(cmd)}")
-    try:
-        result = subprocess.run(cmd, cwd=PROJECT_ROOT, capture_output=True, text=True, check=True)
-        print(f"Stdout:\n{result.stdout}")
-        if result.stderr:
-            print(f"Stderr:\n{result.stderr}")
-        return result.stdout
-    except subprocess.CalledProcessError as e:
-        print(f"Errore durante l'esecuzione del comando Docker Compose: {e}")
-        print(f"Stdout:\n{e.stdout}")
-        print(f"Stderr:\n{e.stderr}")
-        raise
-
 def start_vpn_services():
-    print("Avvio dei servizi VPN (OpenVPN e WireGuard) con Docker Compose...")
-    run_docker_compose_command(["up", "-d"], "Avvio dei servizi VPN")
+    print("Avvio dei servizi VPN (OpenVPN e WireGuard) con Docker...")
+
+    # Avvio OpenVPN
+    print("Avvio container OpenVPN...")
+    try:
+        client.containers.run(
+            "kylemanna/openvpn",
+            name="openvpn",
+            cap_add=["NET_ADMIN"],
+            ports={"1194/udp": 1194},
+            volumes={f"{PROJECT_ROOT}/openvpn-data": {"bind": "/etc/openvpn", "mode": "rw"}},
+            restart_policy={"Name": "unless-stopped"},
+            detach=True
+        )
+        print("Container OpenVPN avviato.")
+    except docker.errors.ContainerError as e:
+        print(f"Errore durante l'avvio del container OpenVPN: {e}")
+        print(f"Stdout: {e.stdout.decode()}")
+        print(f"Stderr: {e.stderr.decode()}")
+    except docker.errors.APIError as e:
+        print(f"Errore API Docker durante l'avvio del container OpenVPN: {e}")
+    
+    # Avvio WireGuard
+    print("Avvio container WireGuard...")
+    try:
+        client.containers.run(
+            "linuxserver/wireguard",
+            name="wireguard",
+            cap_add=["NET_ADMIN"],
+            environment={
+                "PUID": "1000",
+                "PGID": "1000",
+                "TZ": "Europe/Rome",
+                "SERVERURL": "192.168.2.11", # Assicurati che questo sia l'IP corretto
+                "SERVERPORT": "51820",
+                "PEERS": "1",
+                "PEERDNS": "auto",
+                "INTERNAL_SUBNET": "10.13.13.0/24"
+            },
+            volumes={
+                f"{PROJECT_ROOT}/wireguard-data": {"bind": "/config", "mode": "rw"},
+                "/lib/modules": {"bind": "/lib/modules", "mode": "ro"}
+            },
+            ports={"51820/udp": 51820},
+            sysctls={
+                "net.ipv4.ip_forward": "1"
+            },
+            restart_policy={"Name": "unless-stopped"},
+            detach=True
+        )
+        print("Container WireGuard avviato.")
+    except docker.errors.ContainerError as e:
+        print(f"Errore durante l'avvio del container WireGuard: {e}")
+        print(f"Stdout: {e.stdout.decode()}")
+        print(f"Stderr: {e.stderr.decode()}")
+    except docker.errors.APIError as e:
+        print(f"Errore API Docker durante l'avvio del container WireGuard: {e}")
+
     print("Servizi VPN avviati.")
 
 def stop_vpn_services():
-    print("Arresto dei servizi VPN (OpenVPN e WireGuard) con Docker Compose...")
-    run_docker_compose_command(["down"], "Arresto dei servizi VPN")
-    print("Servizi VPN arrestati.")
+    print("Arresto e rimozione dei servizi VPN (OpenVPN e WireGuard)...")
+
+    # Arresto e rimozione OpenVPN
+    try:
+        openvpn_container = client.containers.get('openvpn')
+        print("Arresto e rimozione container OpenVPN...")
+        openvpn_container.stop()
+        openvpn_container.remove()
+        print("Container OpenVPN arrestato e rimosso.")
+    except docker.errors.NotFound:
+        print("Container OpenVPN non trovato o già arrestato/rimosso.")
+    except docker.errors.APIError as e:
+        print(f"Errore API Docker durante l'arresto/rimozione del container OpenVPN: {e}")
+
+    # Arresto e rimozione WireGuard
+    try:
+        wireguard_container = client.containers.get('wireguard')
+        print("Arresto e rimozione container WireGuard...")
+        wireguard_container.stop()
+        wireguard_container.remove()
+        print("Container WireGuard arrestato e rimosso.")
+    except docker.errors.NotFound:
+        print("Container WireGuard non trovato o già arrestato/rimosso.")
+    except docker.errors.APIError as e:
+        print(f"Errore API Docker durante l'arresto/rimozione del container WireGuard: {e}")
+
+    print("Servizi VPN arrestati e rimossi.")
 
 def init_openvpn_pki():
     print("Inizializzazione della PKI di OpenVPN...")
     # Questo comando deve essere eseguito solo una volta per inizializzare la PKI
     # e generare il certificato CA e la chiave del server.
-    # Assicurati che il container OpenVPN sia in esecuzione.
+
+    # Genera il file di configurazione OVPN nel volume openvpn-data
+    print("Generazione del file di configurazione OVPN...")
     try:
-        openvpn_container = client.containers.get('openvpn')
-    except docker.errors.NotFound:
-        print("Il container 'openvpn' non è in esecuzione. Avvialo prima.")
+        client.containers.run(
+            "kylemanna/openvpn",
+            command="ovpn_genconfig -u udp://192.168.2.11",
+            volumes={f"{PROJECT_ROOT}/openvpn-data": {"bind": "/etc/openvpn", "mode": "rw"}},
+            environment={'OVPN_SERVER_URL': 'udp://192.168.2.11', 'EASYRSA_BATCH': '1'}, # Aggiungi OVPN_SERVER_URL e EASYRSA_BATCH
+            remove=True, # Rimuove il container temporaneo dopo l'esecuzione
+            detach=False # Esegui in foreground per catturare l'output
+        )
+        print("File di configurazione OVPN generato.")
+    except docker.errors.ContainerError as e:
+        print(f"Errore durante la generazione del file di configurazione OVPN: {e}")
+        print(f"Stdout: {e.stdout.decode()}")
+        print(f"Stderr: {e.stderr.decode()}")
+        return
+    except docker.errors.APIError as e:
+        print(f"Errore API Docker durante la generazione del file di configurazione OVPN: {e}")
         return
 
-    # Inizializza la PKI
-    print("Generazione del file di configurazione OVPN...")
-    openvpn_container.exec_run("ovpn_genconfig -u udp://192.168.2.11", workdir="/etc/openvpn")
+    # Inizializza la PKI nel volume openvpn-data
     print("Inizializzazione della PKI...")
-    openvpn_container.exec_run("ovpn_initpki", workdir="/etc/openvpn")
-    print("PKI di OpenVPN inizializzata.")
+    try:
+        result = client.containers.run(
+            "kylemanna/openvpn",
+            command="ovpn_initpki nopass",
+            volumes={f"{PROJECT_ROOT}/openvpn-data": {"bind": "/etc/openvpn", "mode": "rw"}},
+            environment={'OVPN_CN': '192.168.2.11', 'EASYRSA_BATCH': '1'}, # Passa il Common Name per la CA e EASYRSA_BATCH
+            remove=True, # Rimuove il container temporaneo dopo l'esecuzione
+            detach=False # Esegui in foreground per catturare l'output
+        )
+        print("PKI di OpenVPN inizializzata.")
+        print(f"Output PKI: {result.decode()}")
+    except docker.errors.ContainerError as e:
+        print(f"Errore durante l'inizializzazione della PKI: {e.exit_status}")
+        print(f"Stdout: {e.stdout.decode()}")
+        print(f"Stderr: {e.stderr.decode()}")
+        return
+    except docker.errors.APIError as e:
+        print(f"Errore API Docker durante l'inizializzazione della PKI: {e}")
+        return
 
 def create_openvpn_user(username):
     print(f"Creazione utente OpenVPN: {username}...")
