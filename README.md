@@ -95,3 +95,7 @@ Per visualizzare lo stato delle connessioni attive di WireGuard, usa il comando 
 python3 vpn_manager.py wireguard list
 ```
 Questo comando esegue `wg show wg0` all'interno del container WireGuard e ti mostrerà i peer connessi e il loro ultimo handshake.
+
+---
+
+**Nota:** Al momento, lo sviluppo di questo progetto è in pausa perché il Guly mi ha trollato. 😜
